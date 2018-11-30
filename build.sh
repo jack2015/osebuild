@@ -14,7 +14,7 @@ LIBUSB=false
 ###########################################
 UPX_VERSION="3.95"
 LIBUSB_VERSION="1.0.22"
-OPENSSL_VERSION="1.1.0i"
+OPENSSL_VERSION="1.1.1a"
 SOURCEDIR="sources"
 ######
 menu_api(){
@@ -95,10 +95,12 @@ do
 	;;
 	arm64)
 	ABI="arm64-v8a"
+	[ "$API" -lt "21" ] && API="21"
 	BUILD
 	;;
 	x86_64)
 	ABI="x86_64"
+	[ "$API" -lt "21" ] && API="21"
 	BUILD
 	;;
 	esac
@@ -133,8 +135,9 @@ echo "DIR := $sources" >> $sources/config.mk
 echo "CAM := $cam" >> $sources/config.mk
 echo "PLATFORM := $PLATFORM" >> $sources/config.mk
 echo "CONFDIR := $CONF" >> $sources/config.mk
-echo "REV := ${REV}${TYPE}" >> $sources/config.mk
+echo "REV := ${FILE_REV}${TYPE}" >> $sources/config.mk
 if $LIBUSB ; then
+echo "LIBUSB_VERSION := $LIBUSB_VERSION" >> $sources/config.mk
 echo "usb := true" >> $sources/config.mk
 usb
 else
@@ -162,19 +165,13 @@ if [ ! -e $sources/libs/$ABI/oscam ] ; then
 dialog --title "WARNING!" --msgbox "\n                     BUILD ERROR!" 7 60
 else
 $UPX && UPX_ && $sources/upx-${UPX_VERSION}-amd64_linux/upx --brute $sources/libs/$ABI/oscam;
-name="oscam-1.20-unstable_svn-${REV}${TYPE}-$PLATFORM"
+name="oscam-1.20-unstable_svn-${FILE_REV}${TYPE}-$PLATFORM"
 ZIP | $progressbox
 dialog --title "$ABI" --msgbox "\n $name" 7 60
 fi
 }
 ######
 ZIP(){
-case $ABI in
-armeabi-v7a)ARCH="arm";;
-x86)ARCH="x86";;
-arm64)ARCH="arm64";;
-x86_64)ARCH="x86_64";;
-esac
 if $APP && [ -e $dir/application/cam.apk ] ; then
 apkdir="$dir/application/storage/OSEbuild/installation"
 mkdir -p $apkdir
@@ -207,18 +204,35 @@ FILE="openssl-${OPENSSL_VERSION}.tar.gz"
 URL="http://www.openssl.org/source/$FILE"
 SOURCE
 [ ! -d $sources/openssl-${OPENSSL_VERSION} ] && tar -xf $sources/$FILE;
-make -C $sources/openssl-${OPENSSL_VERSION} crypto/include/internal/bn_conf.h > /dev/null
-make -C $sources/openssl-${OPENSSL_VERSION} crypto/include/internal/dso_conf.h > /dev/null
-make -C $sources/openssl-${OPENSSL_VERSION} crypto/buildinf.h > /dev/null
-make -C $sources/openssl-${OPENSSL_VERSION} include/openssl/opensslconf.h > /dev/null
-[ ! -e $dir/packages/openssl.mk ] && wget -q -P $dir/packages -c https://raw.githubusercontent.com/su-mak/osebuild/master/packages/openssl.mk;
-$sources/android-ndk-$NDK/ndk-build APP_ABI=$ABI APP_PLATFORM=android-$API NDK_PROJECT_PATH=$sources APP_BUILD_SCRIPT=$dir/packages/openssl.mk 2>&1 | $progressbox
+case $ABI in
+armeabi-v7a)
+CONFIG="android-arm"
+TOOLCHAINS="arm-linux-androideabi"
+;;
+arm64-v8a)
+CONFIG="android-arm64"
+TOOLCHAINS="aarch64-linux-android"
+;;
+x86)
+CONFIG="android-x86"
+TOOLCHAINS="x86"
+;;
+x86_64)
+CONFIG="android-x86_64"
+TOOLCHAINS="x86_64"
+;;
+esac
+export ANDROID_NDK=$sources/android-ndk-$NDK
+export PATH=$ANDROID_NDK/toolchains/$TOOLCHAINS-4.9/prebuilt/linux-x86_64/bin:$PATH
+cd $sources/openssl-${OPENSSL_VERSION} && ./Configure $CONFIG -D__ANDROID_API__=$API no-afalgeng no-aria no-asan no-asm no-async no-autoalginit no-autoerrinit no-autoload-config no-bf no-blake2 no-camellia no-capieng no-cast no-chacha no-cmac no-cms no-comp no-crypto-mdebug no-crypto-mdebug-backtrace no-ct no-deprecated no-devcryptoeng no-dgram no-dh no-dsa no-dso no-dtls no-dynamic-engine no-ec no-ec2m no-ecdh no-ecdsa no-ec_nistp_64_gcc_128 no-egd no-engine no-err no-external-tests no-filenames no-fuzz-libfuzzer no-fuzz-afl no-gost no-heartbeats no-idea no-makedepend no-md2 no-md4 no-msan no-multiblock no-nextprotoneg no-ocb no-ocsp no-pic no-poly1305 no-posix-io no-psk no-rc2 no-rc4 no-rc5 no-rdrand no-rfc3779 no-rmd160 no-scrypt no-sctp no-seed no-shared no-siphash no-sm2 no-sm3 no-sm4 no-sock no-srp no-srtp no-sse2 no-ssl no-ssl-trace no-stdio no-tests no-threads no-tls no-ts no-ubsan no-ui-console no-unit-test no-whirlpool no-weak-ssl-ciphers no-zlib no-zlib-dynamic no-ssl3 no-ssl3-method no-tls1 no-tls1-method no-tls1_1 no-tls1_1-method no-tls1_2 no-tls1_2-method no-tls1_3 no-dtls1 no-dtls1-method no-dtls1_2 no-dtls1_2-method > /dev/null
+make 2>&1 | $progressbox
+cd $sources
 [ ! -d $sources/usr/lib/android-$API/$ABI ] && mkdir -p $sources/usr/lib/android-$API/$ABI;
-mv $sources/obj/local/$ABI/libcrypto_static.a $sources/usr/lib/android-$API/$ABI/libcrypto_static.a
-[ ! -d $sources/usr/include ] && mkdir -p $sources/usr/include;
+mv -f $sources/openssl-${OPENSSL_VERSION}/libcrypto.a $sources/usr/lib/android-$API/$ABI/libcrypto_static.a
+[ ! -d $sources/usr/include/android-$API/$ABI/openssl ] && mkdir -p $sources/usr/include/android-$API/$ABI/openssl;
+mv -f $sources/openssl-${OPENSSL_VERSION}/include/openssl/opensslconf.h $sources/usr/include/android-$API/$ABI/openssl/opensslconf.h
 cp -r $sources/openssl-${OPENSSL_VERSION}/include/openssl $sources/usr/include
 rm -rf $sources/openssl-${OPENSSL_VERSION}
-rm -rf $sources/*obj*
 fi
 }
 ######

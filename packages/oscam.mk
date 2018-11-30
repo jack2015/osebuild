@@ -23,7 +23,7 @@ endif
 
 ##################################
 config := --disable \
-	WITH_SSL CLOCKFIX CARDREADER_DB2COM READER_NAGRA_MERLIN
+	WITH_SSL CLOCKFIX CARDREADER_DB2COM
 ####################################
 
 include $(CLEAR_VARS)
@@ -31,7 +31,8 @@ include $(CLEAR_VARS)
 LOCAL_C_INCLUDES := \
 		../ \
 		$(LOCAL_PATH) \
-		$(LOCAL_PATH)/../usr/include
+		$(LOCAL_PATH)/../usr/include \
+		$(LOCAL_PATH)/../usr/include/$(TARGET_PLATFORM)/$(TARGET_ARCH_ABI)
 
 LOCAL_SRC_FILES := \
 		cscrypt/aes.c \

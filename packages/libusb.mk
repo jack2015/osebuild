@@ -1,6 +1,6 @@
 include config.mk
 
-LOCAL_PATH:= $(DIR)/libusb-1.0.22
+LOCAL_PATH:= $(DIR)/libusb-$(LIBUSB_VERSION)
 
 include $(CLEAR_VARS)
 
