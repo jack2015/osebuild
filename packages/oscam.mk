@@ -200,6 +200,7 @@ LOCAL_CFLAGS := -O2 -ggdb -pipe -ffunction-sections -fdata-sections -fexpensive-
 
 ifeq ($(usb),true)
 LOCAL_CFLAGS += -DWITH_LIBUSB=1 -DHAVE_PTHREAD_H
+LOCAL_LDFLAGS += -llog
 LOCAL_STATIC_LIBRARIES += libusb1.0_static
 endif
 
