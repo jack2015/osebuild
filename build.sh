@@ -1,6 +1,6 @@
 #! /bin/bash
 ####
-NDK=r17c
+NDK=r18b
 #### true|false
 BUILD_LOG=true
 ####
@@ -20,9 +20,7 @@ SOURCEDIR="sources"
 menu_api(){
 [ -e $dir/patches/stapi/libwi.a ] && [ -e $dir/patches/stapi/stapi.patch ] && stapi="stapi "'Openbox_Xcruiser(experimental)'" off";
 cmd=(dialog --separate-output --no-cancel --checklist "OSCam${TYPE} Rev:$FILE_REV" 16 60 10)
-options=(14	"4.0 Ice Cream_Sandwich" off
-	15	"4.0.3–4.0.4 Ice Cream Sandwich" off
-	16	"4.1 Jelly Bean" off
+options=(16	"4.1 Jelly Bean" off
 	17	"4.2 Jelly Bean" off
 	18	"4.3 Jelly Bean" off
 	19	"4.4 KitKat" off
@@ -136,6 +134,7 @@ echo "CAM := $cam" >> $sources/config.mk
 echo "PLATFORM := $PLATFORM" >> $sources/config.mk
 echo "CONFDIR := $CONF" >> $sources/config.mk
 echo "REV := ${FILE_REV}${TYPE}" >> $sources/config.mk
+echo "OPENSSL_VERSION := $OPENSSL_VERSION" >> $sources/config.mk
 if $LIBUSB ; then
 echo "LIBUSB_VERSION := $LIBUSB_VERSION" >> $sources/config.mk
 echo "usb := true" >> $sources/config.mk
@@ -224,15 +223,20 @@ TOOLCHAINS="x86_64"
 esac
 export ANDROID_NDK=$sources/android-ndk-$NDK
 export PATH=$ANDROID_NDK/toolchains/$TOOLCHAINS-4.9/prebuilt/linux-x86_64/bin:$PATH
-cd $sources/openssl-${OPENSSL_VERSION} && ./Configure $CONFIG -D__ANDROID_API__=$API no-afalgeng no-aria no-asan no-asm no-async no-autoalginit no-autoerrinit no-autoload-config no-bf no-blake2 no-camellia no-capieng no-cast no-chacha no-cmac no-cms no-comp no-crypto-mdebug no-crypto-mdebug-backtrace no-ct no-deprecated no-devcryptoeng no-dgram no-dh no-dsa no-dso no-dtls no-dynamic-engine no-ec no-ec2m no-ecdh no-ecdsa no-ec_nistp_64_gcc_128 no-egd no-engine no-err no-external-tests no-filenames no-fuzz-libfuzzer no-fuzz-afl no-gost no-heartbeats no-idea no-makedepend no-md2 no-md4 no-msan no-multiblock no-nextprotoneg no-ocb no-ocsp no-pic no-poly1305 no-posix-io no-psk no-rc2 no-rc4 no-rc5 no-rdrand no-rfc3779 no-rmd160 no-scrypt no-sctp no-seed no-shared no-siphash no-sm2 no-sm3 no-sm4 no-sock no-srp no-srtp no-sse2 no-ssl no-ssl-trace no-stdio no-tests no-threads no-tls no-ts no-ubsan no-ui-console no-unit-test no-whirlpool no-weak-ssl-ciphers no-zlib no-zlib-dynamic no-ssl3 no-ssl3-method no-tls1 no-tls1-method no-tls1_1 no-tls1_1-method no-tls1_2 no-tls1_2-method no-tls1_3 no-dtls1 no-dtls1-method no-dtls1_2 no-dtls1_2-method > /dev/null
-make 2>&1 | $progressbox
-cd $sources
+cd $sources/openssl-${OPENSSL_VERSION} && ./Configure $CONFIG -D__ANDROID_API__=$API no-afalgeng no-aria no-asan no-asm no-async no-autoalginit no-autoerrinit no-autoload-config no-bf no-blake2 no-camellia no-capieng no-cast no-chacha no-cmac no-cms no-comp no-crypto-mdebug no-crypto-mdebug-backtrace no-ct no-deprecated no-devcryptoeng no-dgram no-dh no-dsa no-dso no-dtls no-dynamic-engine no-ec no-ec2m no-ecdh no-ecdsa no-ec_nistp_64_gcc_128 no-egd no-engine no-err no-external-tests no-filenames no-fuzz-libfuzzer no-fuzz-afl no-gost no-heartbeats no-idea no-makedepend no-md2 no-md4 no-msan no-multiblock no-nextprotoneg no-ocb no-ocsp no-pic no-poly1305 no-posix-io no-psk no-rc2 no-rc4 no-rc5 no-rdrand no-rfc3779 no-rmd160 no-scrypt no-sctp no-seed no-shared no-siphash no-sm2 no-sm3 no-sm4 no-sock no-srp no-srtp no-sse2 no-ssl no-ssl-trace no-stdio no-tests no-threads no-tls no-ts no-ubsan no-ui-console no-unit-test no-whirlpool no-weak-ssl-ciphers no-zlib no-zlib-dynamic no-ssl3 no-ssl3-method no-tls1 no-tls1-method no-tls1_1 no-tls1_1-method no-tls1_2 no-tls1_2-method no-tls1_3 no-dtls1 no-dtls1-method no-dtls1_2 no-dtls1_2-method > /dev/null && cd $sources
+make -C $sources/openssl-${OPENSSL_VERSION} crypto/include/internal/bn_conf.h > /dev/null
+make -C $sources/openssl-${OPENSSL_VERSION} crypto/include/internal/dso_conf.h > /dev/null
+make -C $sources/openssl-${OPENSSL_VERSION} crypto/buildinf.h > /dev/null
+make -C $sources/openssl-${OPENSSL_VERSION} include/openssl/opensslconf.h > /dev/null
+[ ! -e $dir/packages/openssl.mk ] && wget -q -P $dir/packages -c https://raw.githubusercontent.com/su-mak/osebuild/master/packages/openssl.mk;
+$sources/android-ndk-$NDK/ndk-build APP_ABI=$ABI APP_PLATFORM=android-$API NDK_PROJECT_PATH=$sources APP_BUILD_SCRIPT=$dir/packages/openssl.mk 2>&1 | $progressbox
 [ ! -d $sources/usr/lib/android-$API/$ABI ] && mkdir -p $sources/usr/lib/android-$API/$ABI;
-mv -f $sources/openssl-${OPENSSL_VERSION}/libcrypto.a $sources/usr/lib/android-$API/$ABI/libcrypto_static.a
+mv $sources/obj/local/$ABI/libcrypto_static.a $sources/usr/lib/android-$API/$ABI/libcrypto_static.a
 [ ! -d $sources/usr/include/android-$API/$ABI/openssl ] && mkdir -p $sources/usr/include/android-$API/$ABI/openssl;
 mv -f $sources/openssl-${OPENSSL_VERSION}/include/openssl/opensslconf.h $sources/usr/include/android-$API/$ABI/openssl/opensslconf.h
 cp -r $sources/openssl-${OPENSSL_VERSION}/include/openssl $sources/usr/include
 rm -rf $sources/openssl-${OPENSSL_VERSION}
+rm -rf $sources/*obj*
 fi
 }
 ######
@@ -345,6 +349,7 @@ case $selected in
 	2) OSCAM_EMU ;;
 	4) OSCAM_PATCHED ;;
 	esac
+clear
 }
 ##############
 case $1 in
