@@ -2,21 +2,25 @@
 ####
 NDK=r18b
 #### true|false
-BUILD_LOG=true
+LOG=true
 ####
 APP=true
-####
-CONF="/data/local"
 ####
 UPX=false
 ####
 LIBUSB=false
+####
+PCSC=false
+####
+CONF="/data/local"
 ###########################################
 UPX_VERSION="3.95"
-LIBUSB_VERSION="1.0.22"
 OPENSSL_VERSION="1.1.1a"
+LIBUSB_VERSION="1.0.22"
+PCSC_LITE_VERSION="1.8.23"
+CCID_VERSION="1.4.29"
 SOURCEDIR="sources"
-######
+###########################################
 menu_api(){
 [ -e $dir/patches/stapi/libwi.a ] && [ -e $dir/patches/stapi/stapi.patch ] && stapi="stapi "'Openbox_Xcruiser(experimental)'" off";
 cmd=(dialog --separate-output --no-cancel --checklist "OSCam${TYPE} Rev:$FILE_REV" 16 60 10)
@@ -52,7 +56,7 @@ do
 	API="21"
 	ABI="armeabi-v7a"
 	CONF="/data/local"
-	APP=false
+	APP=true
 	BUILD
 	;;
 	stapi)
@@ -134,13 +138,25 @@ echo "CAM := $cam" >> $sources/config.mk
 echo "PLATFORM := $PLATFORM" >> $sources/config.mk
 echo "CONFDIR := $CONF" >> $sources/config.mk
 echo "REV := ${FILE_REV}${TYPE}" >> $sources/config.mk
-echo "OPENSSL_VERSION := $OPENSSL_VERSION" >> $sources/config.mk
-if $LIBUSB ; then
-echo "LIBUSB_VERSION := $LIBUSB_VERSION" >> $sources/config.mk
-echo "usb := true" >> $sources/config.mk
+echo "OPENSSL := openssl-${OPENSSL_VERSION}" >> $sources/config.mk
+ssl
+if $LIBUSB || $PCSC ; then
+echo "LIBUSB := libusb-${LIBUSB_VERSION}" >> $sources/config.mk
 usb
+fi
+if $LIBUSB ; then
+echo "usb := true" >> $sources/config.mk
 else
 echo "usb := false" >> $sources/config.mk
+fi
+if $PCSC && $APP ; then
+echo "PCSC_LITE := pcsc-lite-${PCSC_LITE_VERSION}" >> $sources/config.mk
+echo "CCID := ccid-${CCID_VERSION}" >> $sources/config.mk
+echo "pcsc := true" >> $sources/config.mk
+pcsc
+ccid
+else
+echo "pcsc := false" >> $sources/config.mk
 fi
 if [ "$cam" = "OSCam" ] ; then
 echo "emu := false" >> $sources/config.mk
@@ -152,9 +168,8 @@ echo "stapi := true" >> $sources/config.mk
 else
 echo "stapi := false" >> $sources/config.mk
 fi
-ssl
 [ ! -e $dir/packages/oscam.mk ] && wget -q -P $dir/packages -c https://raw.githubusercontent.com/su-mak/osebuild/master/packages/oscam.mk;
-if $BUILD_LOG ; then
+if $LOG ; then
 rm -rf $sources/build.log
 $sources/android-ndk-$NDK/ndk-build APP_ABI=$ABI APP_PLATFORM=android-$API NDK_PROJECT_PATH=$sources NDK_LOG=1 APP_BUILD_SCRIPT=$dir/packages/oscam.mk 2>&1 | tee -a "$sources/build.log" | $progressbox
 else
@@ -175,16 +190,21 @@ if $APP && [ -e $dir/application/cam.apk ] ; then
 apkdir="$dir/application/storage/OSEbuild/installation"
 mkdir -p $apkdir
 zip -j $apkdir/oscam-$ABI.zip -xi $sources/libs/$ABI/oscam
+if $PCSC ; then
+zip -j $apkdir/pcscd-${ABI}.zip -xi $sources/usr/sbin/android-$API/$ABI/pcscd
+zip -j $apkdir/libccid-${ABI}.zip -xi $sources/usr/lib/android-$API/$ABI/libccid.so
+zip -j $apkdir/libccidtwin-${ABI}.zip -xi $sources/usr/lib/android-$API/$ABI/libccidtwin.so
+zip -j $apkdir/Info.plist.zip -xi $dir/packages/ccid/Info.plist
+fi
 cd $dir
 zip -r $dir/$name-$ABI.zip -xi application
 rm -rf $dir/application/storage
 fi
 zip -j $dir/$name-$ABI.zip -xi $sources/libs/$ABI/oscam
 zip -j $dir/$name-$ABI.zip -xi $sources/$cam/README
-$BUILD_LOG && zip -j $dir/$name-$ABI.zip -xi $sources/build.log;
+$LOG && zip -j $dir/$name-$ABI.zip -xi $sources/build.log;
 [ "$choice" = "stapi" ] && [ -e $dir/patches/stapi/plugin.sh ] && . $dir/patches/stapi/plugin.sh;
-rm -rf $sources/*obj*
-rm -rf $sources/libs
+rm -rf $sources/*obj* $sources/libs
 }
 ######
 ndk(){
@@ -194,15 +214,16 @@ if [ ! -d $sources/android-ndk-$NDK ] ; then
 [ ! -e $sources/$FILE ] && SOURCE;
 unzip $sources/$FILE | $progressbox
 fi
-clear;
+clear
 }
 ######
 ssl(){
 if [ ! -e $sources/usr/lib/android-$API/$ABI/libcrypto_static.a ] ; then
-FILE="openssl-${OPENSSL_VERSION}.tar.gz"
+lssl="openssl-${OPENSSL_VERSION}"
+FILE="$lssl.tar.gz"
 URL="http://www.openssl.org/source/$FILE"
 SOURCE
-[ ! -d $sources/openssl-${OPENSSL_VERSION} ] && tar -xf $sources/$FILE;
+[ ! -d $sources/$lssl ] && tar -xf $sources/$FILE;
 case $ABI in
 armeabi-v7a)
 CONFIG="android-arm"
@@ -223,38 +244,103 @@ TOOLCHAINS="x86_64"
 esac
 export ANDROID_NDK=$sources/android-ndk-$NDK
 export PATH=$ANDROID_NDK/toolchains/$TOOLCHAINS-4.9/prebuilt/linux-x86_64/bin:$PATH
-cd $sources/openssl-${OPENSSL_VERSION} && ./Configure $CONFIG -D__ANDROID_API__=$API no-afalgeng no-aria no-asan no-asm no-async no-autoalginit no-autoerrinit no-autoload-config no-bf no-blake2 no-camellia no-capieng no-cast no-chacha no-cmac no-cms no-comp no-crypto-mdebug no-crypto-mdebug-backtrace no-ct no-deprecated no-devcryptoeng no-dgram no-dh no-dsa no-dso no-dtls no-dynamic-engine no-ec no-ec2m no-ecdh no-ecdsa no-ec_nistp_64_gcc_128 no-egd no-engine no-err no-external-tests no-filenames no-fuzz-libfuzzer no-fuzz-afl no-gost no-heartbeats no-idea no-makedepend no-md2 no-md4 no-msan no-multiblock no-nextprotoneg no-ocb no-ocsp no-pic no-poly1305 no-posix-io no-psk no-rc2 no-rc4 no-rc5 no-rdrand no-rfc3779 no-rmd160 no-scrypt no-sctp no-seed no-shared no-siphash no-sm2 no-sm3 no-sm4 no-sock no-srp no-srtp no-sse2 no-ssl no-ssl-trace no-stdio no-tests no-threads no-tls no-ts no-ubsan no-ui-console no-unit-test no-whirlpool no-weak-ssl-ciphers no-zlib no-zlib-dynamic no-ssl3 no-ssl3-method no-tls1 no-tls1-method no-tls1_1 no-tls1_1-method no-tls1_2 no-tls1_2-method no-tls1_3 no-dtls1 no-dtls1-method no-dtls1_2 no-dtls1_2-method > /dev/null && cd $sources
-make -C $sources/openssl-${OPENSSL_VERSION} crypto/include/internal/bn_conf.h > /dev/null
-make -C $sources/openssl-${OPENSSL_VERSION} crypto/include/internal/dso_conf.h > /dev/null
-make -C $sources/openssl-${OPENSSL_VERSION} crypto/buildinf.h > /dev/null
-make -C $sources/openssl-${OPENSSL_VERSION} include/openssl/opensslconf.h > /dev/null
+cd $sources/$lssl && ./Configure $CONFIG -D__ANDROID_API__=$API no-afalgeng no-aria no-asan no-asm no-async no-autoalginit no-autoerrinit no-autoload-config no-bf no-blake2 no-camellia no-capieng no-cast no-chacha no-cmac no-cms no-comp no-crypto-mdebug no-crypto-mdebug-backtrace no-ct no-deprecated no-devcryptoeng no-dgram no-dh no-dsa no-dso no-dtls no-dynamic-engine no-ec no-ec2m no-ecdh no-ecdsa no-ec_nistp_64_gcc_128 no-egd no-engine no-err no-external-tests no-filenames no-fuzz-libfuzzer no-fuzz-afl no-gost no-heartbeats no-idea no-makedepend no-md2 no-md4 no-msan no-multiblock no-nextprotoneg no-ocb no-ocsp no-pic no-poly1305 no-posix-io no-psk no-rc2 no-rc4 no-rc5 no-rdrand no-rfc3779 no-rmd160 no-scrypt no-sctp no-seed no-shared no-siphash no-sm2 no-sm3 no-sm4 no-sock no-srp no-srtp no-sse2 no-ssl no-ssl-trace no-stdio no-tests no-threads no-tls no-ts no-ubsan no-ui-console no-unit-test no-whirlpool no-weak-ssl-ciphers no-zlib no-zlib-dynamic no-ssl3 no-ssl3-method no-tls1 no-tls1-method no-tls1_1 no-tls1_1-method no-tls1_2 no-tls1_2-method no-tls1_3 no-dtls1 no-dtls1-method no-dtls1_2 no-dtls1_2-method > /dev/null && cd $sources
+make -C $sources/$lssl crypto/include/internal/bn_conf.h > /dev/null
+make -C $sources/$lssl crypto/include/internal/dso_conf.h > /dev/null
+make -C $sources/$lssl crypto/buildinf.h > /dev/null
+make -C $sources/$lssl include/openssl/opensslconf.h > /dev/null
 [ ! -e $dir/packages/openssl.mk ] && wget -q -P $dir/packages -c https://raw.githubusercontent.com/su-mak/osebuild/master/packages/openssl.mk;
 $sources/android-ndk-$NDK/ndk-build APP_ABI=$ABI APP_PLATFORM=android-$API NDK_PROJECT_PATH=$sources APP_BUILD_SCRIPT=$dir/packages/openssl.mk 2>&1 | $progressbox
 [ ! -d $sources/usr/lib/android-$API/$ABI ] && mkdir -p $sources/usr/lib/android-$API/$ABI;
 mv $sources/obj/local/$ABI/libcrypto_static.a $sources/usr/lib/android-$API/$ABI/libcrypto_static.a
 [ ! -d $sources/usr/include/android-$API/$ABI/openssl ] && mkdir -p $sources/usr/include/android-$API/$ABI/openssl;
-mv -f $sources/openssl-${OPENSSL_VERSION}/include/openssl/opensslconf.h $sources/usr/include/android-$API/$ABI/openssl/opensslconf.h
-cp -r $sources/openssl-${OPENSSL_VERSION}/include/openssl $sources/usr/include
-rm -rf $sources/openssl-${OPENSSL_VERSION}
-rm -rf $sources/*obj*
+mv -f $sources/$lssl/include/openssl/opensslconf.h $sources/usr/include/android-$API/$ABI/openssl/opensslconf.h
+cp -r $sources/$lssl/include/openssl $sources/usr/include
+rm -rf $sources/$lssl $sources/*obj*
+if [ ! -e $sources/usr/lib/android-$API/$ABI/libcrypto_static.a ] ; then
+dialog --title "EXIT" --yesno "BUILD ERROR: $lssl" 5 60
+case $? in
+   0) clear && exit ;;
+esac
+fi
 fi
 }
 ######
 usb(){
 if [ ! -e $sources/usr/lib/android-$API/$ABI/libusb1.0_static.a ] ; then
-FILE="libusb-${LIBUSB_VERSION}.tar.bz2"
+lusb="libusb-${LIBUSB_VERSION}"
+FILE="$lusb.tar.bz2"
 URL="https://github.com/libusb/libusb/releases/download/v${LIBUSB_VERSION}/$FILE"
 SOURCE
-[ ! -d $sources/libusb-${LIBUSB_VERSION} ] && tar -jxf $sources/$FILE;
-[ ! -d $sources/libusb-${LIBUSB_VERSION}/libusb-1.0 ] && ln -s $sources/libusb $sources/libusb-${LIBUSB_VERSION}/libusb-1.0;
+[ ! -d $sources/$lusb ] && tar -jxf $sources/$FILE;
 [ ! -e $dir/packages/libusb.mk ] && wget -q -P $dir/packages -c https://raw.githubusercontent.com/su-mak/osebuild/master/packages/libusb.mk;
 $sources/android-ndk-$NDK/ndk-build APP_ABI=$ABI APP_PLATFORM=android-$API NDK_PROJECT_PATH=$sources APP_BUILD_SCRIPT=$dir/packages/libusb.mk 2>&1 | $progressbox
 [ ! -d $sources/usr/lib/android-$API/$ABI ] && mkdir -p $sources/usr/lib/android-$API/$ABI;
 mv $sources/obj/local/$ABI/libusb1.0_static.a $sources/usr/lib/android-$API/$ABI/libusb1.0_static.a
 [ ! -d $sources/usr/include/libusb-1.0 ] && mkdir -p $sources/usr/include/libusb-1.0;
-cp $sources/libusb-${LIBUSB_VERSION}/libusb/libusb.h $sources/usr/include/libusb-1.0/
-rm -rf $sources/libusb-${LIBUSB_VERSION}
-rm -rf $sources/*obj*
+cp $sources/$lusb/libusb/libusb.h $sources/usr/include/libusb-1.0/
+rm -rf $sources/$lusb $sources/*obj*
+if [ ! -e $sources/usr/lib/android-$API/$ABI/libusb1.0_static.a ] ; then
+dialog --title "EXIT" --yesno "BUILD ERROR: $lusb" 5 60
+case $? in
+   0) clear && exit ;;
+esac
+fi
+fi
+}
+######
+pcsc(){
+if [ ! -e $sources/usr/lib/android-$API/$ABI/libpcsclite_static.a ] || [ ! -e $sources/usr/sbin/android-$API/$ABI/pcscd ] ; then
+pcscd="pcsc-lite-${PCSC_LITE_VERSION}"
+FILE="$pcscd.tar.bz2"
+URL="https://pcsclite.apdu.fr/files/$FILE"
+SOURCE
+[ ! -d $sources/$pcscd ] && tar -jxf $sources/$FILE;
+for i in pcsc.mk config.h pcscd.h pcsclite.h
+do
+[ ! -e $dir/packages/pcsc/$i ] && wget -q -P $dir/packages/pcsc -c https://raw.githubusercontent.com/su-mak/osebuild/master/packages/pcsc/$i;
+done
+cp $dir/packages/pcsc/config.h $sources/$pcscd/
+cp $dir/packages/pcsc/pcscd.h $sources/$pcscd/src/
+cp $dir/packages/pcsc/pcsclite.h $sources/$pcscd/src/PCSC/
+$sources/android-ndk-$NDK/ndk-build APP_ABI=$ABI APP_PLATFORM=android-$API NDK_PROJECT_PATH=$sources APP_BUILD_SCRIPT=$dir/packages/pcsc/pcsc.mk 2>&1 | $progressbox
+[ ! -d $sources/usr/sbin/android-$API/$ABI ] && mkdir -p $sources/usr/sbin/android-$API/$ABI;
+mv $sources/libs/$ABI/pcscd $sources/usr/sbin/android-$API/$ABI/
+mv $sources/obj/local/$ABI/libpcsclite_static.a $sources/usr/lib/android-$API/$ABI/libpcsclite_static.a
+[ ! -d $sources/usr/include/PCSC ] && mkdir -p $sources/usr/include/PCSC;
+cp $sources/$pcscd/src/PCSC/*.h $sources/usr/include/PCSC
+rm -rf $pcscd $sources/*obj* $sources/libs
+if [ ! -e $sources/usr/lib/android-$API/$ABI/libpcsclite_static.a ] || [ ! -e $sources/usr/sbin/android-$API/$ABI/pcscd ] ; then
+dialog --title "EXIT" --yesno "BUILD ERROR: $pcscd" 5 60
+case $? in
+   0) clear && exit ;;
+esac
+fi
+fi
+}
+######
+ccid(){
+if [ ! -e $sources/usr/lib/android-$API/$ABI/libccid.so ] || [ ! -e $sources/usr/lib/android-$API/$ABI/libccidtwin.so ] ; then
+lccid="ccid-${CCID_VERSION}"
+FILE="$lccid.tar.bz2"
+URL="https://ccid.apdu.fr/files/$FILE"
+SOURCE
+[ ! -d $sources/$lccid ] && tar -jxf $sources/$FILE;
+for i in ccid.mk config.h Info.plist
+do
+[ ! -e $dir/packages/ccid/$i ] && wget -q -P $dir/packages/ccid -c https://raw.githubusercontent.com/su-mak/osebuild/master/packages/ccid/$i;
+done
+cp $dir/packages/ccid/config.h $sources/$lccid/
+$sources/android-ndk-$NDK/ndk-build APP_ABI=$ABI APP_PLATFORM=android-$API NDK_PROJECT_PATH=$sources APP_BUILD_SCRIPT=$dir/packages/ccid/ccid.mk 2>&1 | $progressbox
+[ ! -d $sources/usr/lib/android-$API/$ABI ] && mkdir -p $sources/usr/lib/android-$API/$ABI;
+mv $sources/libs/$ABI/libccid*.so $sources/usr/lib/android-$API/$ABI/
+rm -rf $lccid $sources/*obj* $sources/libs
+if [ ! -e $sources/usr/lib/android-$API/$ABI/libccid.so ] || [ ! -e $sources/usr/lib/android-$API/$ABI/libccidtwin.so ] ; then
+dialog --title "EXIT" --yesno "BUILD ERROR: $lccid" 5 60
+case $? in
+   0) clear && exit ;;
+esac
+fi
 fi
 }
 ######
@@ -328,6 +414,7 @@ cam="OSCam_Emu"
 [ -e $sources/emu ] && FILE_REV=$(svn info $sources/emu | grep Revision | cut -d ' ' -f 2);
 rev
 }
+####
 OSCAM_PATCHED() {
 SVN_SOURCE="https://github.com/oscam-emu/oscam-patched/trunk"
 REV_EMU=$(svn info $SVN_SOURCE | grep Revision | cut -d ' ' -f 2)
@@ -361,10 +448,12 @@ case "$MACHINE" in
 GNU/Linux*)
 echo "-----------------------------"
 echo "Build:     "
+echo "	OSCam"
+echo "	OSCam Emu"
 echo "	Oscam-patched"
 echo "-----------------------------"
 echo "PLATFORM:"
-echo "	ANDROID:arm,x86,arm64,x86_64"
+echo "	ANDROID:arm,arm64,x86,x86_64"
 echo "-----------------------------"
 echo "Packages required:"
 echo "		dialog subversion gcc make zip"

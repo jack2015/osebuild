@@ -1,6 +1,6 @@
 include config.mk
 
-LOCAL_PATH:= $(DIR)/$(CAM)
+LOCAL_PATH := $(DIR)/$(CAM)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libcrypto_static
@@ -11,6 +11,13 @@ ifeq ($(usb),true)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libusb1.0_static
 LOCAL_SRC_FILES := $(LOCAL_PATH)/../usr/lib/$(TARGET_PLATFORM)/$(TARGET_ARCH_ABI)/libusb1.0_static.a
+include $(PREBUILT_STATIC_LIBRARY)
+endif
+
+ifeq ($(pcsc),true)
+include $(CLEAR_VARS)
+LOCAL_MODULE := libpcsclite_static
+LOCAL_SRC_FILES := $(LOCAL_PATH)/../usr/lib/$(TARGET_PLATFORM)/$(TARGET_ARCH_ABI)/libpcsclite_static.a
 include $(PREBUILT_STATIC_LIBRARY)
 endif
 
@@ -32,6 +39,7 @@ LOCAL_C_INCLUDES := \
 		../ \
 		$(LOCAL_PATH) \
 		$(LOCAL_PATH)/../usr/include \
+		$(LOCAL_PATH)/../usr/include/PCSC \
 		$(LOCAL_PATH)/../usr/include/$(TARGET_PLATFORM)/$(TARGET_ARCH_ABI)
 
 LOCAL_SRC_FILES := \
@@ -49,6 +57,7 @@ LOCAL_SRC_FILES := \
 		cscrypt/bn_sqr.c \
 		cscrypt/bn_word.c \
 		cscrypt/mem.c \
+		cscrypt/mdc2.c \
 		cscrypt/des.c \
 		cscrypt/fast_aes.c \
 		cscrypt/i_cbc.c \
@@ -66,10 +75,10 @@ LOCAL_SRC_FILES := \
 		csctapi/ifd_azbox.c \
 		csctapi/ifd_cool.c \
 		csctapi/ifd_db2com.c \
-		csctapi/ifd_drecas.c \
 		csctapi/ifd_mp35.c \
 		csctapi/ifd_pcsc.c \
 		csctapi/ifd_phoenix.c \
+		csctapi/ifd_drecas.c \
 		csctapi/ifd_sc8in1.c \
 		csctapi/ifd_sci.c \
 		csctapi/ifd_smargo.c \
@@ -202,6 +211,11 @@ ifeq ($(usb),true)
 LOCAL_CFLAGS += -DWITH_LIBUSB=1 -DHAVE_PTHREAD_H
 LOCAL_LDFLAGS += -llog
 LOCAL_STATIC_LIBRARIES += libusb1.0_static
+endif
+
+ifeq ($(pcsc),true)
+LOCAL_CFLAGS += -DWITH_PCSC=1
+LOCAL_STATIC_LIBRARIES += libpcsclite_static
 endif
 
 ifeq ($(stapi),true)

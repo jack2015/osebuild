@@ -1,6 +1,6 @@
 include config.mk
 
-LOCAL_PATH:= $(DIR)/openssl-$(OPENSSL_VERSION)
+LOCAL_PATH := $(DIR)/$(OPENSSL)
 
 include $(CLEAR_VARS)
 

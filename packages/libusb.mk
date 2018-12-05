@@ -1,10 +1,10 @@
 include config.mk
 
-LOCAL_PATH:= $(DIR)/libusb-$(LIBUSB_VERSION)
+LOCAL_PATH:= $(DIR)/$(LIBUSB)
 
 include $(CLEAR_VARS)
 
-LOCAL_C_INCLUDES += \
+LOCAL_C_INCLUDES := \
 		$(LOCAL_PATH) \
 		$(LOCAL_PATH)/android \
 		$(LOCAL_PATH)/libusb \
