@@ -1,5 +1,5 @@
 #! /bin/bash
-####
+### r10e,r11c,r12b,r13b,r14b,r15c,r16b,r17c,r18b
 NDK=r18b
 #### true|false
 LOG=true
@@ -21,106 +21,13 @@ PCSC_LITE_VERSION="1.8.23"
 CCID_VERSION="1.4.29"
 SOURCEDIR="sources"
 ###########################################
-menu_api(){
-[ -e $dir/patches/stapi/libwi.a ] && [ -e $dir/patches/stapi/stapi.patch ] && stapi="stapi "'Openbox_Xcruiser(experimental)'" off";
-cmd=(dialog --separate-output --no-cancel --checklist "OSCam${TYPE} Rev:$FILE_REV" 16 60 10)
-options=(16	"4.1 Jelly Bean" off
-	17	"4.2 Jelly Bean" off
-	18	"4.3 Jelly Bean" off
-	19	"4.4 KitKat" off
-	21	"5.0 Lollipop" off
-	22	"5.1 Lollipop" off
-	23	"6.0 Marshmallow" off
-	24	"7.0 Nougat" off
-	26	"8.0 Oreo" off
-	27	"8.1 Oreo" off
-	28	"9.0 Pie" off
-	Ax	"Amiko" off
-	WP2	"WeTek Play 2" off
-	$stapi)
-
-choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
-for choice in $choices
-do
-    case $choice in
-	Ax)
-	BOX="Amiko"
-	API="19"
-	ABI="armeabi-v7a"
-	CONF="/var/tuxbox/config"
-	APP=false
-	BUILD
-	;;
-	WP2)
-	BOX="WeTek_Play_2"
-	API="21"
-	ABI="armeabi-v7a"
-	CONF="/data/local"
-	APP=true
-	BUILD
-	;;
-	stapi)
-	BOX="Openbox_Xcruiser"
-	API="21"
-	ABI="armeabi-v7a"
-	CONF="/data/plugin/oscam"
-	APP=false
-	BUILD
-	rm -rf $sources/$cam
-	;;
-	14|15|16|17|18|19|21|22|23|24|26|27|28)
-	API=$choice
-	menu_abi
-	;;
-	esac
-	done
-clear
-}
-######
-menu_abi(){
-cmd=(dialog --separate-output --no-cancel --checklist "OSCam${TYPE} Rev:$FILE_REV (android-$API)" 11 60 10)
-options=(armeabi-v7a "arm-linux-android" off
-	 x86 "i686-linux-android" off
-	 arm64 "aarch64-linux-android" off
-	 x86_64 "x86_64-linux-android" off)
-choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
-for choice in $choices
-do
-    case $choice in
-	armeabi-v7a)
-	ABI="armeabi-v7a"
-	BUILD
-	;;
-	x86)
-	ABI="x86"
-	BUILD
-	;;
-	arm64)
-	ABI="arm64-v8a"
-	[ "$API" -lt "21" ] && API="21"
-	BUILD
-	;;
-	x86_64)
-	ABI="x86_64"
-	[ "$API" -lt "21" ] && API="21"
-	BUILD
-	;;
-	esac
-	done
-clear
-}
-######
 [ ! -d $SOURCEDIR ] && mkdir -p $SOURCEDIR
 dir=`pwd`
 cd $SOURCEDIR
 sources=`pwd`
-######
-export NCURSES_NO_UTF8_ACS=1
-#export LOCALE=UTF-8
 progressbox="dialog --stdout ""$1"" --progressbox 15 70";
 ######
 BUILD(){
-ndk
 make -C $sources/$cam config
 CONF=$(dialog --no-cancel --title "Oscam config dir:" --inputbox $CONF 8 30 $CONF 3>&1 1>&2 2>&3)
 [ -e $sources/config.mk ] && rm -rf $sources/config.mk
@@ -208,7 +115,13 @@ rm -rf $sources/*obj* $sources/libs
 }
 ######
 ndk(){
-FILE="android-ndk-$NDK-linux-x86_64.zip"
+if [ `uname -m` != 'x86_64' ] ; then
+NDK="r10e"
+M_TYPE="x86"
+else
+M_TYPE="x86_64"
+fi
+FILE="android-ndk-$NDK-linux-$M_TYPE.zip"
 URL="https://dl.google.com/android/repository/$FILE"
 if [ ! -d $sources/android-ndk-$NDK ] ; then
 [ ! -e $sources/$FILE ] && SOURCE;
@@ -217,7 +130,31 @@ fi
 clear
 }
 ######
+repair(){
+if [ "${NDK:1:2}" -le "14" ] ; then
+## OSCam TommyDS patch
+pf="$sources/android-ndk-$NDK/platforms/android-$API/arch-$ARCH/usr/include"
+if [ ! -e $pf/stdint.h.patch ] && [ "$API" -lt "21" ] ; then
+echo '@@ -259,4 +259,10 @@' >> $pf/stdint.h.patch
+echo ' /* Keep the kernel from trying to define these types... */' >> $pf/stdint.h.patch
+echo ' #define __BIT_TYPES_DEFINED__' >> $pf/stdint.h.patch
+echo '' >> $pf/stdint.h.patch
+echo '+#if defined(__LP64__)' >> $pf/stdint.h.patch
+echo '+#  define SIZE_MAX       UINT64_MAX' >> $pf/stdint.h.patch
+echo '+#else' >> $pf/stdint.h.patch
+echo '+#  define SIZE_MAX       UINT32_MAX' >> $pf/stdint.h.patch
+echo '+#endif' >> $pf/stdint.h.patch
+echo '+' >> $pf/stdint.h.patch
+echo ' #endif /* _STDINT_H */' >> $pf/stdint.h.patch
+patch -p1 < $pf/stdint.h.patch  $pf/stdint.h
+fi
+## openssl patch
+[ ! -e $pf/uchar.h ] && cp $sources/android-ndk-$NDK/platforms/android-21/arch-$ARCH/usr/include/uchar.h $pf;
+fi
+}
+######
 ssl(){
+repair
 if [ ! -e $sources/usr/lib/android-$API/$ABI/libcrypto_static.a ] ; then
 lssl="openssl-${OPENSSL_VERSION}"
 FILE="$lssl.tar.gz"
@@ -241,9 +178,17 @@ x86_64)
 CONFIG="android-x86_64"
 TOOLCHAINS="x86_64"
 ;;
+mips)
+CONFIG="android-mips"
+TOOLCHAINS="mipsel-linux-android"
+;;
+mips64)
+CONFIG="android-mips64"
+TOOLCHAINS="mips64el-linux-android"
+;;
 esac
 export ANDROID_NDK=$sources/android-ndk-$NDK
-export PATH=$ANDROID_NDK/toolchains/$TOOLCHAINS-4.9/prebuilt/linux-x86_64/bin:$PATH
+export PATH=$ANDROID_NDK/toolchains/$TOOLCHAINS-4.9/prebuilt/linux-$M_TYPE/bin:$PATH
 cd $sources/$lssl && ./Configure $CONFIG -D__ANDROID_API__=$API no-afalgeng no-aria no-asan no-asm no-async no-autoalginit no-autoerrinit no-autoload-config no-bf no-blake2 no-camellia no-capieng no-cast no-chacha no-cmac no-cms no-comp no-crypto-mdebug no-crypto-mdebug-backtrace no-ct no-deprecated no-devcryptoeng no-dgram no-dh no-dsa no-dso no-dtls no-dynamic-engine no-ec no-ec2m no-ecdh no-ecdsa no-ec_nistp_64_gcc_128 no-egd no-engine no-err no-external-tests no-filenames no-fuzz-libfuzzer no-fuzz-afl no-gost no-heartbeats no-idea no-makedepend no-md2 no-md4 no-msan no-multiblock no-nextprotoneg no-ocb no-ocsp no-pic no-poly1305 no-posix-io no-psk no-rc2 no-rc4 no-rc5 no-rdrand no-rfc3779 no-rmd160 no-scrypt no-sctp no-seed no-shared no-siphash no-sm2 no-sm3 no-sm4 no-sock no-srp no-srtp no-sse2 no-ssl no-ssl-trace no-stdio no-tests no-threads no-tls no-ts no-ubsan no-ui-console no-unit-test no-whirlpool no-weak-ssl-ciphers no-zlib no-zlib-dynamic no-ssl3 no-ssl3-method no-tls1 no-tls1-method no-tls1_1 no-tls1_1-method no-tls1_2 no-tls1_2-method no-tls1_3 no-dtls1 no-dtls1-method no-dtls1_2 no-dtls1_2-method > /dev/null && cd $sources
 make -C $sources/$lssl crypto/include/internal/bn_conf.h > /dev/null
 make -C $sources/$lssl crypto/include/internal/dso_conf.h > /dev/null
@@ -438,12 +383,135 @@ case $selected in
 	esac
 clear
 }
+######
+menu_api(){
+ndk
+_9="2.3–2.3.2_Gingerbread"
+_12="3.1_Honeycomb"
+_13="3.2_Honeycomb"
+_14="4.0_Ice_Cream_Sandwich"
+_15="4.0.3–4.0.4_Ice_Cream_Sandwich"
+_16="4.1_Jelly_Bean"
+_17="4.2_Jelly_Bean"
+_18="4.3_Jelly_Bean"
+_19="4.4_KitKat"
+_20="Wear_4.4_KitKat"
+_21="5.0_Lollipop"
+_22="5.1_Lollipop"
+_23="6.0_Marshmallow"
+_24="7.0_Nougat"
+_25="7.1_Nougat"
+_26="8.0_Oreo"
+_27="8.1_Oreo"
+_28="9.0_Pie"
+for i in {9..28}
+do
+p="_$i"
+[ -d $sources/android-ndk-$NDK/platforms/android-$i ] && list="$list $i "${!p}" off";
+done
+[ -e $dir/patches/stapi/libwi.a ] && [ -e $dir/patches/stapi/stapi.patch ] && stapi="stapi "'Openbox_Xcruiser(experimental)'" off";
+cmd=(dialog --separate-output --no-cancel --checklist "OSCam${TYPE} Rev:$FILE_REV" 16 60 10)
+options=($list
+	Ax	"Amiko" off
+	WP2	"WeTek Play 2" off
+	$stapi)
+
+choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
+for choice in $choices
+do
+    case $choice in
+	Ax)
+	BOX="Amiko"
+	API="19"
+	ABI="armeabi-v7a"
+	CONF="/var/tuxbox/config"
+	APP=false
+	ARCH="arm"
+	BUILD
+	;;
+	WP2)
+	BOX="WeTek_Play_2"
+	API="21"
+	ABI="armeabi-v7a"
+	CONF="/data/local"
+	APP=true
+	ARCH="arm"
+	BUILD
+	;;
+	stapi)
+	BOX="Openbox_Xcruiser"
+	API="21"
+	ABI="armeabi-v7a"
+	CONF="/data/plugin/oscam"
+	APP=false
+	ARCH="arm"
+	BUILD
+	rm -rf $sources/$cam
+	;;
+	9|1*|2*)
+	API=$choice
+	menu_abi
+	;;
+	esac
+	done
+clear
+}
+######
+menu_abi(){
+[ -d $sources/android-ndk-$NDK/toolchains/mipsel-linux-android-4.9 ] && mips="mips "mipsel-linux-android" off";
+[ -d $sources/android-ndk-$NDK/toolchains/mips64el-linux-android-4.9 ] && mips64="mips64 "mips64el-linux-android" off";
+cmd=(dialog --separate-output --no-cancel --checklist "OSCam${TYPE} Rev:$FILE_REV (android-$API)" 11 60 10)
+options=(armeabi-v7a "arm-linux-android" off
+	x86 "i686-linux-android" off
+	arm64 "aarch64-linux-android" off
+	x86_64 "x86_64-linux-android" off
+	$mips
+	$mips64)
+choices=$("${cmd[@]}" "${options[@]}" 2>&1 >/dev/tty)
+for choice in $choices
+do
+    case $choice in
+	armeabi-v7a)
+	ABI="armeabi-v7a"
+	ARCH="arm"
+	BUILD
+	;;
+	x86)
+	ABI="x86"
+	ARCH="x86"
+	BUILD
+	;;
+	arm64)
+	ABI="arm64-v8a"
+	[ "$API" -lt "21" ] && API="21"
+	ARCH="arm64"
+	BUILD
+	;;
+	x86_64)
+	ABI="x86_64"
+	ARCH="$ABI"
+	[ "$API" -lt "21" ] && API="21"
+	BUILD
+	;;
+	mips)
+	ABI="mips"
+	ARCH="$ABI"
+	BUILD
+	;;
+	mips64)
+	ABI="mips64"
+	[ "$API" -lt "21" ] && API="21"
+	ARCH="$ABI"
+	BUILD
+	;;
+	esac
+	done
+clear
+}
 ##############
 case $1 in
 h|-h|--h|help|-help|--help|Help|HELP)
 MACHINE=`uname -o`
-MACHINE_TYPE=`uname -m`
-if [ $MACHINE_TYPE = 'x86_64' ] ; then
 case "$MACHINE" in
 GNU/Linux*)
 echo "-----------------------------"
@@ -453,10 +521,10 @@ echo "	OSCam Emu"
 echo "	Oscam-patched"
 echo "-----------------------------"
 echo "PLATFORM:"
-echo "	ANDROID:arm,arm64,x86,x86_64"
+echo "	ANDROID:arm,arm64,x86,x86_64,mips,mips64"
 echo "-----------------------------"
 echo "Packages required:"
-echo "		dialog subversion gcc make zip"
+echo "		dialog subversion make zip"
 echo "-----------------------------"
 echo "   $0"
 echo "-----------------------------"
@@ -465,9 +533,6 @@ echo "-----------------------------"
 echo "this is not linux operating system"
 ;;
 esac
-else
-echo "this is not linux x86_64 operating system"
-fi
 exit 0;
 ;;
 esac
